@@ -1,0 +1,186 @@
+/* Android Play. The page lives in its own origin, so TEDI's stylesheet does not
+   reach it: the tokens below are TEDI's names with TEDI's dark defaults, and
+   the pane overwrites them with the live theme (see applyTheme in app.js).
+   Chrome follows TEDI's rules - square corners, button faces, --input fields,
+   a --popover menu instead of a native <select>. Only the game controls are
+   round, because they stand for fingertips. */
+:root {
+  --background: #181a1e;
+  --sidebar: #1a1c20;
+  --foreground: #c3c6cd;
+  --muted-foreground: #82858d;
+  --border: #2a2e35;
+  --primary: #9a10f7;
+  --primary-foreground: #ffffff;
+  --tedi-button-face: #4d4f55;
+  --tedi-button-face-hover: color-mix(in srgb, #4d4f55 86%, #c3c6cd);
+  --tedi-button-face-foreground: #c3c6cd;
+  --input: #333842;
+  --ring: #9a10f7;
+  --popover: #23272a;
+  --popover-foreground: #e2e5ea;
+  --accent: #3a1a63;
+  --accent-foreground: #f3e8ff;
+  --card: #1e1f23;
+  --destructive: #ff4d6d;
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+  --keys-opacity: 1;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; border-radius: 0; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; background: var(--sidebar); color: var(--foreground); font: 11.5px/1.4 var(--font-sans); }
+#app { height: 100%; display: flex; flex-direction: column; padding: 6px; gap: 6px; }
+svg { flex: 0 0 auto; }
+
+/* --- Bar: the fleet's 30px strip inside a card ----------------------------- */
+.bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 5px 8px; background: var(--background); border: 1px solid var(--border); }
+.bar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+.bar .spacer { flex: 1 1 auto; }
+.status { color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+.status.is-error { color: var(--destructive); }
+.label { color: var(--muted-foreground); }
+
+/* --- Buttons: host Button variant="ghost" with a resting face -------------- */
+button { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 22px; padding: 0 8px; border: 1px solid transparent; background: var(--tedi-button-face); color: var(--tedi-button-face-foreground); font: inherit; font-size: 11px; font-weight: 500; line-height: 1; cursor: pointer; outline: none; white-space: nowrap; transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease; }
+button:hover:not(:disabled) { background: var(--tedi-button-face-hover); }
+button:focus-visible { border-color: var(--ring); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.is-on { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+button.is-on:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 82%, transparent); }
+button.is-danger { color: var(--destructive); }
+button.icon { width: 22px; padding: 0; }
+button.ghost { background: transparent; color: var(--muted-foreground); }
+button.ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--foreground) 10%, transparent); color: var(--foreground); }
+button.ghost.is-on { background: color-mix(in srgb, var(--primary) 22%, transparent); border-color: transparent; color: var(--foreground); }
+.seg { display: inline-flex; gap: 1px; }
+
+/* --- Inputs and the custom select (host Input / Radix Select) --------------- */
+input { box-sizing: border-box; height: 22px; padding: 0 8px; border: 1px solid transparent; background: color-mix(in srgb, var(--input) 50%, transparent); color: var(--foreground); font: inherit; font-size: 11.5px; outline: none; }
+input:hover { background: color-mix(in srgb, var(--input) 60%, transparent); }
+input:focus { border-color: var(--ring); }
+.select { justify-content: space-between; min-width: 120px; max-width: 200px; background: color-mix(in srgb, var(--input) 50%, transparent); color: var(--foreground); font-size: 11.5px; }
+.select:hover:not(:disabled) { background: color-mix(in srgb, var(--input) 60%, transparent); }
+.select[aria-expanded="true"] { border-color: var(--ring); }
+.select .select-label { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+.select .caret { opacity: 0.65; transition: transform 0.15s ease; }
+.select[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.menu { position: fixed; z-index: 10000; margin: 0; padding: 5px; list-style: none; min-width: 150px; max-height: 320px; overflow-y: auto; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); box-shadow: 0 14px 32px rgba(0, 0, 0, 0.3); font-size: 11.5px; }
+.menu li { display: flex; align-items: center; gap: 8px; padding: 5px 9px; cursor: pointer; user-select: none; font-weight: 500; }
+.menu li:hover, .menu li.is-active { background: var(--accent); color: var(--accent-foreground); }
+.menu li .check { margin-left: auto; color: var(--primary); display: inline-flex; }
+
+/* --- Tooltip (host TooltipContent: popover surface, ring, soft shadow) ------ */
+.tip { position: fixed; z-index: 10001; max-width: 300px; padding: 6px 12px; background: var(--popover); color: var(--popover-foreground); font-size: 11px; line-height: 1.375; box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent), 0 10px 15px -3px rgb(0 0 0 / 0.22); pointer-events: none; opacity: 0; transform: scale(0.95); transition: opacity 0.12s ease, transform 0.12s ease; }
+.tip.is-open { opacity: 1; transform: scale(1); }
+
+/* --- Grid of phones --------------------------------------------------------- */
+/* The stage holds what floats over the phones (hint, mode badge); the grid in it
+   scrolls once zoomed in. `safe center` centers what fits and starts what does
+   not at the edge, so every part of a zoomed screen can be scrolled to. */
+.stage { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+.grid { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-content: safe center; justify-content: safe center; gap: 6px; overflow: auto; }
+/* TEDI's own scrollbar (globals.css), which cannot reach this page. Only the
+   ::-webkit-scrollbar rules: setting scrollbar-width or scrollbar-color would
+   switch WebView2 to the OS scrollbar and ignore these. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border: 0; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); background-clip: padding-box; }
+.zoom-label { min-width: 42px; font-variant-numeric: tabular-nums; }
+.tile { flex: 0 0 auto; display: flex; flex-direction: column; background: var(--background); border: 1px solid var(--border); }
+.tile.is-active { border-color: var(--primary); }
+.tile-head { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 8px; border-bottom: 1px solid var(--border); flex: 0 0 auto; cursor: pointer; }
+.tile-head .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-head .state { color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; }
+.tile-head .state.is-error { color: var(--destructive); }
+.tile-body { position: relative; flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.screen { position: relative; background: #000; }
+.screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.screen .off { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted-foreground); background: var(--card); text-align: center; padding: 8px; }
+.overlay { position: absolute; inset: 0; }
+.playing .overlay { pointer-events: none; }
+/* While playing the keys are as faint as the Keys setting says, but a pressed one
+   shows at full strength for the press. Hidden keeps them all out of sight
+   (visibility, not display: touches are measured against the overlay's box). */
+.playing .overlay > * { opacity: var(--keys-opacity); }
+.playing .overlay > .ctl.pressed, .playing .overlay > .ctl.hit { opacity: 1; }
+.keys-hidden .playing .overlay { visibility: hidden; }
+.note { color: var(--muted-foreground); padding: 24px; text-align: center; line-height: 1.7; }
+/* A detached phone's window: its screen and nothing else (no bar, no header). */
+.solo #app { padding: 0; gap: 0; }
+.solo .bar, .solo .tile-head, .solo .hint { display: none; }
+.solo .grid { gap: 0; background: #000; }
+.solo .tile, .solo .tile.is-active { border: 0; box-shadow: none; background: #000; }
+.solo-state { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; color: var(--muted-foreground); pointer-events: none; }
+.solo-state.is-error { color: var(--destructive); }
+/* A detached window's mute and controls buttons: a corner of the screen, shown
+   while the mouse is over it, and always while muted so a silent window says why. */
+.solo-tools { position: absolute; top: 8px; right: 8px; z-index: 8; display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s ease; }
+.tile-body:hover .solo-tools, .solo-tools:has(.is-on), .solo-tools:focus-within, .solo-tools:has([aria-expanded="true"]) { opacity: 1; }
+.solo-tools button { width: 28px; height: 28px; background: color-mix(in srgb, var(--popover) 85%, transparent); color: var(--popover-foreground); }
+
+/* --- Controls popover: volume here, brightness on the phone (host Popover) --- */
+.pop { position: fixed; z-index: 10000; width: 320px; max-width: calc(100vw - 12px); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); box-shadow: 0 14px 32px rgba(0, 0, 0, 0.3); }
+/* label, slider, value, Auto: one grid, so both sliders are the same length. */
+.pop-row { display: grid; grid-template-columns: 80px minmax(0, 1fr) 34px 38px; align-items: center; gap: 8px; height: 26px; }
+.pop-label { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.pop-value { text-align: right; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.pop-note { color: var(--muted-foreground); font-size: 10.5px; line-height: 1.4; margin: 0 0 6px; }
+.pop-note:last-child { margin-bottom: 0; }
+.pop button.pop-auto { height: 20px; padding: 0 6px; font-size: 10.5px; }
+/* A range in the host's colours: a thin --input track, a --primary fill and thumb. */
+.pop input[type="range"] { width: 100%; height: 16px; padding: 0; margin: 0; background: transparent; border: 0; accent-color: var(--primary); cursor: pointer; }
+.pop input[type="range"]:disabled { opacity: 0.45; cursor: not-allowed; }
+/* Which way the keyboard goes: over the screen, so a detached phone's window shows it too. */
+.mode-badge { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 7; padding: 4px 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent); font-weight: 600; white-space: nowrap; pointer-events: none; }
+.mode-badge.is-typing { background: var(--primary); color: var(--primary-foreground); }
+.hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 5px 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent); pointer-events: none; white-space: nowrap; z-index: 5; }
+
+/* --- Controls: solid primary fills with a white rim, so they read on ANY game
+   frame. No glow: a 1px dark hairline outside the rim is the only shadow. --- */
+.ctl { position: absolute; transform: translate(-50%, -50%); color: var(--primary-foreground); font-weight: 700; user-select: none; touch-action: none; }
+.tap, .knob { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; letter-spacing: 0.02em;
+  background: var(--primary); border: 3px solid #ffffff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  cursor: grab; transition: transform 0.08s ease, background-color 0.08s ease; }
+.knob.small { width: 34px; height: 34px; font-size: 11px; border-width: 2px; }
+.joy { border-radius: 50%; border: 3px solid #ffffff; background: color-mix(in srgb, var(--primary) 40%, transparent); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); cursor: grab; }
+.joy .lbl { position: absolute; min-width: 24px; padding: 1px 5px; text-align: center; font-size: 13px; background: var(--primary); color: var(--primary-foreground); border: 2px solid #ffffff; }
+.joy .lbl.up { top: 6px; left: 50%; transform: translateX(-50%); }
+.joy .lbl.down { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.joy .lbl.left { left: 6px; top: 50%; transform: translateY(-50%); }
+.joy .lbl.right { right: 6px; top: 50%; transform: translateY(-50%); }
+.joy .dot { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; background: #ffffff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); transition: transform 0.08s ease; }
+.joy .grip { position: absolute; right: -8px; top: 50%; width: 14px; height: 14px; margin-top: -7px; background: var(--primary); border: 2px solid #fff; cursor: ew-resize; }
+/* Pressed: while the key is held the fill darkens and the circle dips; on every
+   press a white ring ripples out from it (class `hit`, which outlives a quick
+   tap), like a finger landing on the glass. */
+.ctl.pressed.tap, .ctl.pressed.knob { background: color-mix(in srgb, var(--primary) 62%, #000); transform: translate(-50%, -50%) scale(0.86); }
+.ctl.pressed.joy { background: color-mix(in srgb, var(--primary) 65%, transparent); }
+.tap::after, .knob::after, .joy::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid #ffffff; opacity: 0; pointer-events: none; }
+.ctl.hit::after { animation: tam-ripple 0.42s ease-out; }
+@keyframes tam-ripple { from { opacity: 0.95; transform: scale(1); } to { opacity: 0; transform: scale(1.65); } }
+/* Just added: a white ring pulses out of it until it is first dragged, so the
+   new control stands out from the ones already placed. A swipe pulses at both ends. */
+.tap::before, .knob::before, .joy::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 3px solid #ffffff; opacity: 0; pointer-events: none; }
+.ctl.fresh::before { animation: tam-pulse 1.1s ease-out infinite; }
+@keyframes tam-pulse { from { opacity: 0.95; transform: scale(1); } to { opacity: 0; transform: scale(1.9); } }
+@media (prefers-reduced-motion: reduce) {
+  .ctl.hit::after { animation: none; }
+  .ctl.fresh::before { animation: none; opacity: 1; transform: scale(1.35); }
+}
+/* Selected (editing): two crisp rings, no blur. */
+.ctl.selected.tap, .ctl.selected.knob, .ctl.selected.joy { box-shadow: 0 0 0 3px var(--background), 0 0 0 6px #ffffff; }
+.swipe-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.swipe-line line { stroke: var(--primary); stroke-width: 4; stroke-dasharray: 10 6; }
+
+/* --- Inspector (a card on the active phone) --------------------------------- */
+.inspector { position: absolute; top: 8px; right: 8px; z-index: 6; width: 240px; padding: 10px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35); }
+.inspector h3 { margin: 0; font-size: 12px; font-weight: 600; }
+.inspector .row { display: flex; align-items: center; gap: 8px; }
+.inspector .row > span { width: 64px; color: var(--muted-foreground); }
+.inspector .row button { flex: 1; }
+.inspector .row input { width: 80px; }
+.inspector .help { color: var(--muted-foreground); line-height: 1.5; }
+

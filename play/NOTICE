@@ -1,0 +1,7 @@
+scrcpy-server is the unmodified server from scrcpy 4.1
+(https://github.com/Genymobile/scrcpy), Copyright (C) 2018 Genymobile and
+Copyright (C) 2018-2026 Romain Vimont, licensed under the Apache License,
+Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).
+
+relay.mjs speaks exactly this server's protocol; the server refuses a client
+that announces any other version, so replace both together.

@@ -1,0 +1,57 @@
+{
+  "$schema": "./manifest.schema.json",
+  "id": "tedi.android-mirroring",
+  "name": "Android Mirror",
+  "version": "0.1.0",
+  "description": "Detect Android devices over USB or Wi-Fi debugging and start or stop scrcpy from a TEDI panel. Play shows a phone screen inside TEDI (or a browser) with a drag-and-drop keymap editor for games: tap, WASD joystick and swipe.",
+  "author": "IlhamRiski - ilhamriski.com",
+  "homepage": "https://tedi.ilhamriski.com/",
+  "main": "extension.js",
+  "permissions": [
+    "panels:register",
+    "tabs:open",
+    "ui:toast",
+    "statusbar:write",
+    "invoke:shell_run_command",
+    "invoke:shell_bg_spawn_direct",
+    "invoke:shell_bg_logs",
+    "invoke:shell_bg_kill",
+    "invoke:shell_bg_remove",
+    "invoke:plugin:opener|open_url",
+    "invoke:open_float_window",
+    "invoke:set_float_window_bounds"
+  ],
+  "engines": {
+    "tedi": ">=0.4.7"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "tedi.android-mirroring.open",
+        "title": "Open Android Mirror",
+        "category": "Android"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "tedi.android-mirroring.open",
+        "key": "Mod+Alt+R"
+      }
+    ],
+    "panels": [
+      {
+        "id": "android-mirroring",
+        "title": "Android Mirror",
+        "surface": "tab",
+        "icon": "lucide:Smartphone",
+        "toggleCommand": "tedi.android-mirroring.open"
+      },
+      {
+        "id": "android-play",
+        "title": "Android Play",
+        "surface": "tab",
+        "icon": "lucide:Gamepad2"
+      }
+    ]
+  }
+}

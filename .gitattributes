@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# scrcpy-server is the unmodified Genymobile server binary (see play/NOTICE).
+# Any EOL rewriting corrupts it and the device refuses the client.
+play/scrcpy-server binary

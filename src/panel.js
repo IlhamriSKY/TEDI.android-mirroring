@@ -16,7 +16,6 @@ const svg = (/** @type {string} */ body) =>
   `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 const ICONS = {
   refresh: svg('<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>'),
-  loader: svg('<path d="M21 12a9 9 0 1 1-6.219-8.56"/>'),
   play: svg('<polygon points="6 3 20 12 6 21 6 3"/>'),
   stop: svg('<rect width="14" height="14" x="5" y="5" rx="1"/>'),
   wifi: svg('<path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/>'),
@@ -56,7 +55,8 @@ const CSS = `
 .tam-btn.tam-icon { width: 22px; padding: 0; gap: 0; }
 .tam-ico { display: inline-flex; flex: 0 0 auto; }
 @keyframes tam-spin { to { transform: rotate(360deg); } }
-.tam-spin { animation: tam-spin 0.7s linear infinite; }
+.tam-spin { display: inline-block; position: relative; width: 13px; height: 13px; flex: none; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6.75' fill='none' stroke='%23000' stroke-width='2.5'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
+.tam-spin::before { content: ""; position: absolute; inset: 0; background: conic-gradient(color-mix(in srgb, currentColor 18%, transparent) 15%, currentColor 96%, color-mix(in srgb, currentColor 18%, transparent)); animation: tam-spin 0.9s linear infinite; will-change: transform; }
 .tam-alert { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--tedi-icon-working, #ca8a04); flex: 0 0 auto; }
 .tam-alert.is-error { color: var(--destructive, #ef4444); }
 .tam-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
@@ -177,9 +177,9 @@ function checkbox(on) {
   return box;
 }
 
-/** @param {keyof typeof ICONS} name @param {boolean} [spin] */
-function icon(name, spin = false) {
-  const node = el("span", spin ? "tam-ico tam-spin" : "tam-ico");
+/** @param {keyof typeof ICONS} name */
+function icon(name) {
+  const node = el("span", "tam-ico");
   node.innerHTML = ICONS[name];
   return node;
 }
@@ -197,7 +197,7 @@ function button(label, glyph, opts) {
   node.type = "button";
   node.disabled = Boolean(opts.busy || opts.disabled);
   if (opts.busy) node.setAttribute("aria-busy", "true");
-  node.append(icon(opts.busy ? "loader" : glyph, opts.busy));
+  node.append(opts.busy ? el("span", "tam-spin") : icon(glyph));
   // An icon on its own still has to say what it is.
   if (label) node.append(document.createTextNode(label));
   else if (opts.aria) node.setAttribute("aria-label", opts.aria);
@@ -491,7 +491,7 @@ function pairForm() {
 /** @param {string} text @param {boolean} [spin] */
 function note(text, spin = false) {
   const node = el("div", "tam-note");
-  if (spin) node.append(icon("loader", true));
+  if (spin) node.append(el("span", "tam-spin"));
   node.append(document.createTextNode(text));
   return node;
 }

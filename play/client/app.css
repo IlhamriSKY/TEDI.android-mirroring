@@ -38,6 +38,13 @@ svg { flex: 0 0 auto; }
 .bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 34px; padding: 5px 8px; background: var(--background); border: 1px solid var(--border); }
 .bar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
 .bar .spacer { flex: 1 1 auto; }
+.bar-group { display: inline-flex; align-items: center; gap: 6px; }
+/* The resize corner: two white strokes with a dark hairline, so it reads on any
+   frame; it shows while the mouse is over the phone. */
+.resize-grip { position: absolute; right: 0; bottom: 0; z-index: 4; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none; opacity: 0; transition: opacity 0.15s ease;
+  background: linear-gradient(135deg, transparent 0 52%, rgba(255, 255, 255, 0.9) 52% 60%, transparent 60% 70%, rgba(255, 255, 255, 0.9) 70% 78%, transparent 78%);
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)); }
+.tile-body:hover .resize-grip, .resize-grip:active { opacity: 1; }
 .status { color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
 .status.is-error { color: var(--destructive); }
 .label { color: var(--muted-foreground); }
@@ -111,7 +118,7 @@ input:focus { border-color: var(--ring); }
 /* A detached phone's window: its screen and nothing else (no bar, no header). */
 .solo #app { padding: 0; gap: 0; }
 .solo .bar, .solo .tile-head, .solo .hint { display: none; }
-.solo .grid { gap: 0; background: #000; }
+.solo .grid { gap: 0; background: #000; overflow: hidden; } /* sized to its phone: never scrolls */
 .solo .tile, .solo .tile.is-active { border: 0; box-shadow: none; background: #000; }
 .solo-state { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; color: var(--muted-foreground); pointer-events: none; }
 .solo-state.is-error { color: var(--destructive); }
@@ -130,8 +137,19 @@ input:focus { border-color: var(--ring); }
 .pop-note { color: var(--muted-foreground); font-size: 10.5px; line-height: 1.4; margin: 0 0 6px; }
 .pop-note:last-child { margin-bottom: 0; }
 .pop button.pop-auto { height: 20px; padding: 0 6px; font-size: 10.5px; }
-/* A range in the host's colours: a thin --input track, a --primary fill and thumb. */
-.pop input[type="range"] { width: 100%; height: 16px; padding: 0; margin: 0; background: transparent; border: 0; accent-color: var(--primary); cursor: pointer; }
+/* A retro segmented range, the status bar pixel meter's look: a --primary bar
+   over a muted track, cut into cells by gaps painted in the popover's own
+   colour. How far it reaches is --fill, which app.js keeps on the element. */
+.pop input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; padding: 0; margin: 0; background: transparent; border: 0; cursor: pointer; }
+.pop input[type="range"]::-webkit-slider-runnable-track {
+  height: 12px;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 4px, var(--popover) 4px 6px),
+    linear-gradient(90deg, var(--primary) 0 var(--fill, 0%), color-mix(in srgb, var(--muted-foreground) 25%, transparent) var(--fill, 0%) 100%);
+}
+/* One cell wide, so the handle reads as a lit cell rather than a knob. */
+.pop input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 4px; height: 16px; margin-top: -2px; background: var(--foreground); box-shadow: 0 0 0 1px var(--popover); }
+.pop input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1px var(--popover), 0 0 0 3px var(--ring); }
 .pop input[type="range"]:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Which way the keyboard goes: over the screen, so a detached phone's window shows it too. */
 .mode-badge { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 7; padding: 4px 12px; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 0 0 1px color-mix(in srgb, var(--foreground) 8%, transparent); font-weight: 600; white-space: nowrap; pointer-events: none; }
@@ -141,10 +159,10 @@ input:focus { border-color: var(--ring); }
 /* --- Controls: solid primary fills with a white rim, so they read on ANY game
    frame. No glow: a 1px dark hairline outside the rim is the only shadow. --- */
 .ctl { position: absolute; transform: translate(-50%, -50%); color: var(--primary-foreground); font-weight: 700; user-select: none; touch-action: none; }
-.tap, .knob { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; letter-spacing: 0.02em;
+.tap, .knob { width: var(--ctl-size, 54px); height: var(--ctl-size, 54px); border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--ctl-size, 54px) * 0.3); letter-spacing: 0.02em;
   background: var(--primary); border: 3px solid #ffffff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
   cursor: grab; transition: transform 0.08s ease, background-color 0.08s ease; }
-.knob.small { width: 34px; height: 34px; font-size: 11px; border-width: 2px; }
+.knob.small { width: calc(var(--ctl-size, 54px) * 0.63); height: calc(var(--ctl-size, 54px) * 0.63); font-size: calc(var(--ctl-size, 54px) * 0.2); border-width: 2px; }
 .joy { border-radius: 50%; border: 3px solid #ffffff; background: color-mix(in srgb, var(--primary) 40%, transparent); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); cursor: grab; }
 .joy .lbl { position: absolute; min-width: 24px; padding: 1px 5px; text-align: center; font-size: 13px; background: var(--primary); color: var(--primary-foreground); border: 2px solid #ffffff; }
 .joy .lbl.up { top: 6px; left: 50%; transform: translateX(-50%); }

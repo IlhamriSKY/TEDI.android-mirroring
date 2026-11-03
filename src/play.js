@@ -22,6 +22,8 @@ let focusSerial = "";
 const focusers = new Set();
 /** A detached phone's reuseKey: that one phone, screen only. */
 const SOLO_PREFIX = "solo:";
+/** One phone in a pane of its own, bar and all: Play with All Phones off. */
+const ONLY_PREFIX = "only:";
 /** Where the running relay is published, so a floating window (TEDI runs a second
  *  copy of this extension in it) joins it instead of starting another relay,
  *  another scrcpy session and another detach list. */
@@ -178,7 +180,34 @@ function fitFloat(box, width, height) {
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** @param {string} serial */
+/**
+ * Play exactly these phones, in a pane of their own. The same set reopens the
+ * same pane, so ticking the same two phones again lands where it was.
+ * @param {string[]} serials @param {string} active the one the button was pressed on
+ */
+export function openSet(serials, active) {
+  if (serials.length === 0) return;
+  const name = (/** @type {string} */ serial) =>
+    state.names[serial] || state.devices.find((item) => item.serial === serial)?.model || serial;
+  const title = serials.length === 1 ? name(serials[0]) : `${name(active)} +${serials.length - 1}`;
+  focusSerial = active;
+  ctx?.tabs?.openExtensionPane?.({
+    panelId: PLAY_PANEL_ID,
+    title,
+    icon: "lucide:Gamepad2",
+    reuseKey: `${ONLY_PREFIX}${[...serials].sort().join(",")}`,
+  });
+}
+
+/** Every mounted Play page, so a rename reaches the tiles it shows. @type {Set<() => void>} */
+const namePushers = new Set();
+
+/** Tell every open Play page the names changed. */
+export function pushNames() {
+  for (const push of [...namePushers]) push();
+}
+
+/** Play every phone, in the one shared pane, with this one active. @param {string} serial */
 export function openPlay(serial) {
   focusSerial = serial;
   for (const focus of focusers) focus(serial);
@@ -362,9 +391,12 @@ async function hostFont() {
 export function mountPlay(container, reuseKey) {
   // "solo:<serial>" is a detached phone; a bare serial is a pane opened before
   // one pane held every phone, which shows just that phone too.
-  const solo = reuseKey?.startsWith(SOLO_PREFIX)
-    ? reuseKey.slice(SOLO_PREFIX.length)
-    : reuseKey && reuseKey !== PLAY_KEY ? reuseKey : "";
+  const only = reuseKey?.startsWith(ONLY_PREFIX) ? reuseKey.slice(ONLY_PREFIX.length) : "";
+  const solo = only
+    ? ""
+    : reuseKey?.startsWith(SOLO_PREFIX)
+      ? reuseKey.slice(SOLO_PREFIX.length)
+      : reuseKey && reuseKey !== PLAY_KEY ? reuseKey : "";
   container.replaceChildren();
   const host = document.createElement("div");
   host.style.cssText = "height:100%;display:flex;flex-direction:column;background:var(--sidebar, var(--background));";
@@ -390,8 +422,12 @@ export function mountPlay(container, reuseKey) {
       failedAt = -1;
       if (disposed || relay.port === port) return;
       port = relay.port;
-      const which = solo ? `solo=${encodeURIComponent(solo)}` : `focus=${encodeURIComponent(focusSerial)}`;
-      frame.src = `${origin()}/?${which}&t=${relay.token}&embed=1#theme=${encodeURIComponent(JSON.stringify(theme()))}`;
+      const which = solo
+        ? `solo=${encodeURIComponent(solo)}`
+        : only
+          ? `only=${encodeURIComponent(only)}&focus=${encodeURIComponent(focusSerial)}`
+          : `focus=${encodeURIComponent(focusSerial)}`;
+      frame.src = `${origin()}/?${which}&t=${relay.token}&embed=1#theme=${encodeURIComponent(JSON.stringify(theme()))}&names=${encodeURIComponent(JSON.stringify(state.names))}`;
       host.replaceChildren(frame);
     } catch (error) {
       failedAt = state.probes;
@@ -412,7 +448,16 @@ export function mountPlay(container, reuseKey) {
   });
   /** @param {string} serial */
   const focus = (serial) => post({ type: "tam-focus", serial });
-  if (!solo) focusers.add(focus);
+  if (!solo && !only) focusers.add(focus);
+  // A rename in the Android Mirror tab shows on the tiles without a reload.
+  let shownNames = "";
+  const pushNames = () => {
+    const next = JSON.stringify(state.names);
+    if (next === shownNames) return;
+    shownNames = next;
+    post({ type: "tam-names", names: state.names });
+  };
+  namePushers.add(pushNames);
 
   // The relay can exit while TEDI keeps running; start a new one for this pane.
   // A floating window keeps trying to join, since it cannot start one itself.
@@ -449,13 +494,7 @@ export function mountPlay(container, reuseKey) {
       if (phones.length) void detachAll(phones);
       return;
     }
-    if (data?.type === "tam-size" && solo) {
-      fitFloat(host, Number(data.width) || 0, Number(data.height) || 0);
-      return;
-    }
-    const url = data?.url;
-    if (data?.type !== "tam-open-browser" || typeof url !== "string" || !url.startsWith(`${event.origin}/`)) return;
-    ctx?.invoke("plugin:opener|open_url", { url }).catch((error) => ctx?.logger?.warn?.("could not open the browser", error));
+    if (data?.type === "tam-size" && solo) fitFloat(host, Number(data.width) || 0, Number(data.height) || 0);
   };
   window.addEventListener("message", onMessage);
 
@@ -479,6 +518,7 @@ export function mountPlay(container, reuseKey) {
   return () => {
     disposed = true;
     focusers.delete(focus);
+    namePushers.delete(pushNames);
     state.views.delete(paint);
     window.removeEventListener("message", onMessage);
     window.removeEventListener("pointerdown", onHostPress, true);

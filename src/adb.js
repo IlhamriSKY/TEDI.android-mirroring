@@ -146,7 +146,7 @@ export function parseProbeOutput(text) {
 }
 
 /** @param {number} ms */
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Run a program without a shell and return its combined output.
@@ -278,4 +278,13 @@ export function unconnected(services, devices) {
   return services.filter(
     (service) => !devices.some((device) => device.serial === service.endpoint || device.serial.startsWith(`${service.name}.`)),
   );
+}
+
+/**
+ * The phone's Wi-Fi IPv4 address from `ip -o -4 addr show`: the first `wlan*`
+ * interface (mobile data is `rmnet*`, a hotspot `swlan*` or `ap*`).
+ * @param {string} text @returns {string}
+ */
+export function wifiAddress(text) {
+  return /^\d+:\s+wlan\d+\s+inet (\d{1,3}(?:\.\d{1,3}){3})\//m.exec(text)?.[1] ?? "";
 }

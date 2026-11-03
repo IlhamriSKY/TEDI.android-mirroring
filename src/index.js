@@ -1,8 +1,9 @@
 import { IN_FLOAT, ctx, setCtx, state, clearTimer } from "./runtime.js";
-import { isSafeEndpoint, isSafeSerial, parseDevices, parseMdns, probeTools, runDirect, takeFrames } from "./adb.js";
+import { isSafeEndpoint, isSafeSerial, parseDevices, parseMdns, probeTools, runDirect, sleep, takeFrames, wifiAddress } from "./adb.js";
 import { mount, repaintViews, removeStyles } from "./panel.js";
 import { removeItem, render as renderStatus } from "./statusbar.js";
-import { PLAY_PANEL_ID, checkJoinedRelay, mountPlay, openPlay, reapRelay, stopRelay } from "./play.js";
+import { registerAiTool } from "./ai.js";
+import { PLAY_PANEL_ID, checkJoinedRelay, mountPlay, openSet, pushNames, reapRelay, stopRelay } from "./play.js";
 
 const PANEL_ID = "android-mirroring";
 const CMD_OPEN = "tedi.android-mirroring.open";
@@ -11,6 +12,17 @@ const TICK_MS = 1000;
 /** Wi-Fi services only show in the pane, so they are only scanned while one is open. */
 const MDNS_EVERY_TICKS = 5;
 const TRACKER_RETRY_MS = 3000;
+/** The port `adb tcpip` opens on a USB phone, until the phone restarts. */
+const TCPIP_PORT = 5555;
+/** Where the Wi-Fi endpoints to rejoin are kept, and how many. */
+const WIFI_KEY = "wifiEndpoints";
+const WIFI_REMEMBERED = 4;
+const CONNECTED = /^(?:already )?connected to /i;
+const DISCONNECTED = /^disconnected/i;
+/** Where the phone names and the Play selection live, per install. */
+const NAMES_KEY = "names";
+const SELECTED_KEY = "selected";
+const PAIRED = /^Successfully paired/i;
 
 /** @param {import("../tedi").ExtensionContext} context */
 export async function activate(context) {
@@ -41,11 +53,38 @@ export async function activate(context) {
 
   state.onOpen = openPane;
   state.onRefresh = () => void discover(true);
-  state.onConnect = (endpoint) => void connectWifi(endpoint);
+  state.onConnect = connectWifi;
+  state.onWifi = (serial) => void wifiFromUsb(serial);
+  state.onPair = pairWifi;
   state.onStart = (serial) => void startMirror(serial);
   state.onStop = (serial) => void stopMirror(serial);
-  state.onPlay = openPlay;
+  // A row's Play is that phone; Play All is every phone that is ticked.
+  state.onPlay = (serial) => openSet([serial], serial);
+  state.onPlaySelected = () => {
+    const ticked = state.devices
+      .filter((device) => device.state === "device" && state.selected.has(device.serial))
+      .map((device) => device.serial);
+    if (ticked.length > 0) openSet(ticked, ticked[0]);
+  };
+  state.onForget = (serial) => void forgetPhone(serial);
+  state.onSelect = (serial, on) => {
+    if (on) state.selected.add(serial);
+    else state.selected.delete(serial);
+    void ctx?.storage.set(SELECTED_KEY, [...state.selected]).catch(() => {});
+    repaintViews();
+  };
+  state.onRename = (serial, name) => {
+    const clean = name.trim().replace(/\s+/g, " ").slice(0, 40);
+    if (clean) state.names[serial] = clean;
+    else delete state.names[serial];
+    void ctx?.storage.set(NAMES_KEY, state.names).catch(() => {});
+    pushNames();
+    renderStatus();
+    repaintViews();
+  };
+  await loadPreferences();
   context.registerCommandHandler(CMD_OPEN, openPane);
+  registerAiTool();
   context.addDisposer(context.registerPanelRenderer(PANEL_ID, (container) => mount(container)));
   context.addDisposer(context.registerPanelRenderer(PLAY_PANEL_ID, (container, info) => mountPlay(container, info?.reuseKey)));
 
@@ -95,6 +134,8 @@ export async function deactivate() {
     onOpen: null,
     onRefresh: null,
     onConnect: null,
+    onWifi: null,
+    onPair: null,
     onStart: null,
     onStop: null,
   });
@@ -209,8 +250,10 @@ async function pumpTracker() {
   const latest = frames.at(-1);
   if (latest !== undefined) {
     state.devices = parseDevices(latest);
+    const born = !state.tracked;
     state.tracked = true;
     state.error = null;
+    if (born) void rejoinWifi();
   }
   if (!logs.exited) return;
   // The server went away (adb kill-server, a version clash, a crash). Retry;
@@ -264,31 +307,171 @@ async function reapMirrors() {
   }
 }
 
-/** @param {string} endpoint */
+/**
+ * Endpoints adb connect reached, newest first. A TCP transport dies with the
+ * adb server, so a TEDI restart or an extension reload loses every Wi-Fi phone
+ * while USB comes back on its own: these are the ones to rejoin.
+ * @returns {Promise<string[]>}
+ */
+async function knownWifi() {
+  const saved = await ctx?.storage.get(WIFI_KEY).catch(() => null);
+  return Array.isArray(saved) ? saved.filter((e) => typeof e === "string" && isSafeEndpoint(e)) : [];
+}
+
+/** @param {string} endpoint @param {boolean} keep */
+async function rememberWifi(endpoint, keep) {
+  const rest = (await knownWifi()).filter((e) => e !== endpoint);
+  await ctx?.storage.set(WIFI_KEY, keep ? [endpoint, ...rest].slice(0, WIFI_REMEMBERED) : rest).catch(() => {});
+}
+
+/**
+ * Remove a phone this PC reached over the network: adb drops the transport, the
+ * rejoin list drops the endpoint (or the next tracker would bring it straight
+ * back), and the name and tick that were about it go too. A USB phone has no
+ * such button: it leaves when the cable does.
+ * @param {string} serial
+ */
+async function forgetPhone(serial) {
+  if (!isSafeEndpoint(serial) || !state.tracked || state.connecting.has(serial)) return;
+  state.selected.delete(serial);
+  delete state.names[serial];
+  await ctx?.storage.set(SELECTED_KEY, [...state.selected]).catch(() => {});
+  await ctx?.storage.set(NAMES_KEY, state.names).catch(() => {});
+  await rememberWifi(serial, false);
+  pushNames();
+  await connecting(
+    serial,
+    async () => (await runDirect(state.adbPath, ["disconnect", serial])).trim().replace(/\s+/g, " "),
+    DISCONNECTED,
+  );
+}
+
+/**
+ * Rejoin them once a tracker is up, all at once: an unreachable endpoint costs
+ * a 20 s adb timeout, and four of those in a row would be over a minute.
+ *
+ * A failure does NOT forget the endpoint any more. A phone dozing on Wi-Fi
+ * refuses one connect and takes the next (its radio wakes on the first packet),
+ * so dropping it after a single miss threw away a phone that was fine seconds
+ * later. Remove on the row is how an endpoint goes for good.
+ */
+async function rejoinWifi() {
+  const known = await knownWifi();
+  await Promise.all(known.map(async (endpoint) => {
+    if (!state.tracked || state.devices.some((device) => device.serial === endpoint)) return;
+    const output = await adbConnect(endpoint, 1).catch(() => "");
+    if (!CONNECTED.test(output)) ctx?.logger?.info?.(`could not rejoin ${endpoint}: ${output || "no answer"}`);
+  }));
+}
+
+/**
+ * `adb connect` to a phone with Wireless debugging on, found by mDNS or typed
+ * in from its Wireless debugging screen.
+ * @param {string} endpoint
+ */
 async function connectWifi(endpoint) {
-  if (!isSafeEndpoint(endpoint) || !state.tracked || state.connecting.has(endpoint)) return;
-  state.connecting.add(endpoint);
-  paint();
-  try {
-    const output = (await runDirect(state.adbPath, ["connect", endpoint])).trim().replace(/\s+/g, " ");
-    if (/^(?:already )?connected to /i.test(output)) {
-      showToast(`adb: ${output}`, "success");
-    } else {
-      const hint = /failed to (?:connect|authenticate)/i.test(output)
-        ? " Pair it once first: Wireless debugging > Pair device with pairing code, then adb pair."
-        : "";
-      showToast(`adb: ${(output || `could not connect to ${endpoint}`).slice(-200)}${hint}`, "error");
+  if (!isSafeEndpoint(endpoint) || !state.tracked || state.connecting.has(endpoint)) return false;
+  return connecting(endpoint, async () => {
+    const output = await adbConnect(endpoint, 1);
+    if (CONNECTED.test(output)) {
+      await rememberWifi(endpoint, true);
+      return output;
     }
+    if (/failed to authenticate/i.test(output)) throw new Error(`${output}. This PC is not paired with the phone yet: pair it with a code first.`);
+    throw new Error(`${output}. Check the IP address & Port on the phone's Wireless debugging screen (the port changes each time it is turned on) and that the phone is on a network this PC can reach.`);
+  });
+}
+
+/**
+ * Pair with the phone's "Pair device with pairing code" window (Android 11+),
+ * once per PC. The window's port and code only live while it stays open.
+ * @param {string} endpoint @param {string} code
+ */
+async function pairWifi(endpoint, code) {
+  const key = `pair:${endpoint}`;
+  if (!isSafeEndpoint(endpoint) || !/^\d{6}$/.test(code) || !state.tracked || state.connecting.has(key)) return false;
+  return connecting(key, async () => {
+    const output = (await runDirect(state.adbPath, ["pair", endpoint, code], 30000)).trim().replace(/\s+/g, " ");
+    if (PAIRED.test(output)) return `${output}. Now connect with the IP address & Port on the phone's Wireless debugging screen.`;
+    if (/wrong password/i.test(output)) throw new Error("Wrong pairing code. Type the 6 digits the phone's pairing window shows.");
+    // adb hides the real reason ("protocol fault (couldn't read status
+    // message)"); its log says the port refused or timed out.
+    throw new Error(`Could not reach the pairing window at ${endpoint}. Keep it open on the phone (its port and code change each time it opens), check the address, and make sure the phone is on a network this PC can reach.`);
+  }, PAIRED);
+}
+
+/**
+ * Wi-Fi from a USB phone: adbd starts listening on TCP (until the phone
+ * restarts) and adb connects to the phone's Wi-Fi address, after which the
+ * cable can come off. Needs no pairing code and no mDNS, which many networks
+ * block. The key the phone already allowed over USB is the one it trusts.
+ * @param {string} serial
+ */
+async function wifiFromUsb(serial) {
+  if (!isSafeSerial(serial) || !state.tracked || state.connecting.has(serial)) return;
+  await connecting(serial, async () => {
+    const ip = wifiAddress(await runDirect(state.adbPath, ["-s", serial, "shell", "ip -o -4 addr show"]));
+    if (!ip) throw new Error("The phone is not on Wi-Fi. Turn Wi-Fi on on the phone, on a network this PC can reach, then try again.");
+    await runDirect(state.adbPath, ["-s", serial, "tcpip", String(TCPIP_PORT)]);
+    const output = await adbConnect(`${ip}:${TCPIP_PORT}`, 6); // adbd restarts on the new port first
+    if (CONNECTED.test(output)) await rememberWifi(`${ip}:${TCPIP_PORT}`, true);
+    if (!CONNECTED.test(output) && /failed to connect|timed out|refused/i.test(output)) {
+      throw new Error(`${output} This PC cannot reach the phone at ${ip}: check the phone stayed on that Wi-Fi and that this PC can route to it. Guest and school networks often keep devices apart.`);
+    }
+    return output;
+  });
+}
+
+/** The user's own name for each phone, and whether Play opens all of them. */
+async function loadPreferences() {
+  const names = await ctx?.storage.get(NAMES_KEY).catch(() => null);
+  if (names && typeof names === "object") {
+    for (const [serial, value] of Object.entries(names)) {
+      if (isSafeSerial(serial) && typeof value === "string" && value.trim()) state.names[serial] = value;
+    }
+  }
+  const selected = await ctx?.storage.get(SELECTED_KEY).catch(() => null);
+  if (Array.isArray(selected)) {
+    for (const serial of selected) if (typeof serial === "string" && isSafeSerial(serial)) state.selected.add(serial);
+  }
+}
+
+/** `adb connect`, retried once a second while it fails. @param {string} endpoint @param {number} tries */
+async function adbConnect(endpoint, tries) {
+  let output = "";
+  for (let i = 0; i < tries; i++) {
+    if (i > 0) await sleep(1000);
+    output = (await runDirect(state.adbPath, ["connect", endpoint])).trim().replace(/\s+/g, " ");
+    if (CONNECTED.test(output)) break;
+  }
+  return output || `could not connect to ${endpoint}`;
+}
+
+/**
+ * Run a Wi-Fi step with `key` shown busy, toast how it went, then read the
+ * device list again. Resolves true when adb's answer matches `ok`.
+ * @param {string} key @param {() => Promise<string>} task resolves to adb's answer; throws what to tell the user
+ * @param {RegExp} [ok]
+ */
+async function connecting(key, task, ok = CONNECTED) {
+  state.connecting.add(key);
+  paint();
+  let done = false;
+  try {
+    const output = await task();
+    done = ok.test(output);
+    showToast(`adb: ${output.slice(-240)}`, done ? "success" : "error");
   } catch (error) {
-    showToast(`Wi-Fi connect failed: ${messageOf(error)}`, "error");
+    showToast(messageOf(error).slice(-320), "error");
   } finally {
-    state.connecting.delete(endpoint);
+    state.connecting.delete(key);
     await serialized(async () => {
       await pumpTracker();
       await scanWifi();
     });
     if (state.active) paint();
   }
+  return done;
 }
 
 /** @param {string} serial */

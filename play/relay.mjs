@@ -105,9 +105,11 @@ class Session {
     this.control = null;
     /** @type {ReturnType<typeof setTimeout> | null} */
     this.lingerTimer = null;
-    /** A brightness change waiting for the one before it: only the latest is kept. @type {{auto: boolean, level: number} | null} */
-    this.brightnessPending = null;
-    this.brightnessBusy = false;
+    /** Phone settings (brightness, volume) waiting for the adb call before them, by kind: only the latest of each is kept. @type {Map<string, string>} */
+    this.settingsPending = new Map();
+    this.settingsBusy = false;
+    /** The phone's media volume steps, once read: 0..15 on AOSP, 0..150 on MIUI. */
+    this.volumeRange = { min: 0, max: 0 };
     this.nextBase = 0;
     this.ready = this.start().catch((error) => this.close(`Could Not Start: ${error.message}`));
   }
@@ -294,8 +296,17 @@ class Session {
     } else if (msg.t === "brightness?") {
       void this.readBrightness().then((value) => viewer.socket.write(wsFrame(1, Buffer.from(JSON.stringify({ type: "brightness", ...value })))));
     } else if (msg.t === "brightness" && (msg.auto === true || (Number.isFinite(msg.level) && msg.level >= 0 && msg.level <= 1))) {
-      this.brightnessPending = { auto: msg.auto === true, level: msg.auto === true ? 0 : Number(msg.level) };
-      void this.applyBrightness();
+      // Numbers only reach the shell, never text from the page.
+      const level = Number(msg.level);
+      void this.queueSetting("brightness", msg.auto === true
+        ? "settings put system screen_brightness_mode 1"
+        : `settings put system screen_brightness_mode 0; cmd display set-brightness ${level.toFixed(4)} >/dev/null 2>&1 || settings put system screen_brightness ${Math.max(1, Math.round(level * 255))}`);
+    } else if (msg.t === "volume?") {
+      void this.readVolume().then((level) => viewer.socket.write(wsFrame(1, Buffer.from(JSON.stringify({ type: "volume", level })))));
+    } else if (msg.t === "volume" && Number.isFinite(msg.level) && msg.level >= 0 && msg.level <= 1 && this.volumeRange.max > 0) {
+      const { min, max } = this.volumeRange;
+      const step = min + Math.round(Number(msg.level) * (max - min));
+      void this.queueSetting("volume", `cmd media_session volume --stream 3 --set ${step} >/dev/null 2>&1 || media volume --stream 3 --set ${step}`);
     } else if (msg.t === "video") {
       const on = Boolean(msg.on);
       if (on === viewer.video) return;
@@ -329,22 +340,37 @@ class Session {
     }
   }
 
-  /** Set the brightness a slider asked for, one adb call at a time, the latest value winning. */
-  async applyBrightness() {
-    if (this.brightnessBusy) return;
-    this.brightnessBusy = true;
+  /**
+   * The phone's media volume, 0..1 of its own steps (the same volume the phone's
+   * keys change). Sound captured for Play is taken after it, so this is also how
+   * loud the phone plays here.
+   * @returns {Promise<number | null>}
+   */
+  async readVolume() {
     try {
-      while (this.brightnessPending && !this.closed) {
-        const { auto, level } = this.brightnessPending;
-        this.brightnessPending = null;
-        // Numbers only reach the shell, never text from the page.
-        const script = auto
-          ? "settings put system screen_brightness_mode 1"
-          : `settings put system screen_brightness_mode 0; cmd display set-brightness ${level.toFixed(4)} >/dev/null 2>&1 || settings put system screen_brightness ${Math.max(1, Math.round(level * 255))}`;
-        await adb(["-s", this.serial, "shell", script]).catch(() => {});
+      const out = await adb(["-s", this.serial, "shell", "cmd media_session volume --stream 3 --get 2>/dev/null || media volume --stream 3 --get"]);
+      const m = /volume is (\d+) in range \[(\d+)\.\.(\d+)\]/.exec(out);
+      if (!m || Number(m[3]) <= Number(m[2])) return null;
+      this.volumeRange = { min: Number(m[2]), max: Number(m[3]) };
+      return (Number(m[1]) - this.volumeRange.min) / (this.volumeRange.max - this.volumeRange.min);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Run what a slider asked for, one adb call at a time, the latest of each kind winning. @param {string} kind @param {string} script */
+  async queueSetting(kind, script) {
+    this.settingsPending.set(kind, script);
+    if (this.settingsBusy) return;
+    this.settingsBusy = true;
+    try {
+      for (const [next, run] of this.settingsPending) {
+        if (this.closed) break;
+        this.settingsPending.delete(next);
+        await adb(["-s", this.serial, "shell", run]).catch(() => {});
       }
     } finally {
-      this.brightnessBusy = false;
+      this.settingsBusy = false;
     }
   }
 

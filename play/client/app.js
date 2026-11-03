@@ -7,9 +7,9 @@
 // are played at once. A phone's screen can be off: it still takes input, and
 // this PC stops receiving and decoding its video.
 //
-// Sound plays here, not on the phone (Android 11+). Muting and volume are per
-// phone and on this side only; a muted or hidden phone is not sent any sound.
-// Brightness is the phone's own screen, set from here.
+// Sound plays here, not on the phone (Android 11+). Muting is per phone and on
+// this side only; a muted or hidden phone is not sent any sound. Volume and
+// brightness are the phone's own, set from here.
 //
 // Positions are fractions of the video frame (0..1), so a layout survives any
 // window size. A joystick radius is a fraction of the frame HEIGHT, which keeps
@@ -22,6 +22,10 @@ const FOCUS = params.get("focus") ?? "";
 /** A detached phone's window: this one phone, screen only, always active. */
 const SOLO = params.get("solo") ?? "";
 if (SOLO) document.documentElement.classList.add("solo");
+/** The phones the Android Mirror tab ticked for this pane, empty for every phone. */
+const ONLY = new Set((params.get("only") ?? "").split(",").filter(Boolean));
+/** True while this page is about a single phone, however it was opened. */
+const LONE = Boolean(SOLO) || ONLY.size === 1;
 const ACTION = { DOWN: 0, UP: 1, MOVE: 2 };
 const MOUSE_ID = 0;
 const POLL_MS = 3000;
@@ -50,7 +54,6 @@ const ICONS = {
   videoOff: svg('<path d="M10.66 6H14a2 2 0 0 1 2 2v2.5l5.248-3.062A.5.5 0 0 1 22 7.87v8.196"/><path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2"/><path d="m2 2 20 20"/>'),
   sync: svg('<path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/>'),
   detach: svg('<rect width="18" height="18" x="3" y="3"/><path d="M12 3v18"/><path d="m15 10 2 2-2 2"/>'),
-  external: svg('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'),
   caret: svg('<path d="m6 9 6 6 6-6"/>'),
   check: svg('<path d="M20 6 9 17l-5-5"/>'),
   volume: svg('<path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/>'),
@@ -217,6 +220,20 @@ function keyLabel(code) {
   return names[code] ?? code;
 }
 
+/** What the user renamed each phone to, by serial. TEDI owns the list and
+ *  passes it in `#names={...}`, then posts `tam-names` whenever it changes. */
+let customNames = /** @type {Record<string, string>} */ ({});
+/** @param {string} hash */
+function readNames(hash) {
+  const match = hash.match(/names=([^&]+)/);
+  if (!match) return;
+  try {
+    const value = JSON.parse(decodeURIComponent(match[1]));
+    if (value && typeof value === "object") customNames = value;
+  } catch {}
+}
+readNames(location.hash);
+
 /** TEDI passes its live tokens as `#theme={...}` (names without the leading --). */
 function applyTheme() {
   const match = location.hash.match(/theme=([^&]+)/);
@@ -242,14 +259,16 @@ applyTheme();
  *   keys: {up: string, left: string, down: string, right: string}}} JoystickControl
  * @typedef {{id: string, type: "swipe", x: number, y: number, x2: number, y2: number, ms: number, key: string}} SwipeControl
  * @typedef {TapControl | JoystickControl | SwipeControl} Control
- * @typedef {{video: Record<string, boolean>, sync: Record<string, boolean>, mute: Record<string, boolean>, volume: Record<string, number>, layout: "grid" | "focus", opacity: number, zoom: number}} PlaySettings
+ * @typedef {{video: Record<string, boolean>, sync: Record<string, boolean>, mute: Record<string, boolean>, layout: "grid" | "focus", opacity: number, zoom: number, keySize: number}} PlaySettings
  * @typedef {{version: number, profiles: Record<string, {controls: Control[]}>, lastProfile: Record<string, string>, play: PlaySettings}} KeymapDoc
  */
 
 /** @type {KeymapDoc} */
-let doc = { version: 1, profiles: { Default: { controls: [] } }, lastProfile: {}, play: { video: {}, sync: {}, mute: {}, volume: {}, layout: "grid", opacity: 1, zoom: 1 } };
+let doc = { version: 1, profiles: { Default: { controls: [] } }, lastProfile: {}, play: { video: {}, sync: {}, mute: {}, layout: "grid", opacity: 1, zoom: 1, keySize: 1 } };
 /** Zoom steps of the grid. 1 fits every shown phone in the pane; above it the grid scrolls. */
 const ZOOMS = [0.5, 0.67, 0.75, 0.9, 1, 1.25, 1.5, 2, 2.5, 3];
+/** Control sizes, as a multiple of the 54px a button is by default. */
+const KEY_SIZES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 /** @type {Map<string, Dev>} */
 const devs = new Map();
 let active = "";
@@ -347,7 +366,6 @@ function adoptDoc(rev, next) {
   if (savePending) return;
   releaseAll();
   doc = normalizeDoc(next);
-  for (const d of devs.values()) d.player.setVolume(doc.play.volume[d.serial] ?? 1);
   if (!byIdIn(activeDev(), selected)) selected = null;
   refreshChrome();
 }
@@ -357,8 +375,11 @@ function normalizeDoc(value) {
   value.lastProfile ??= {};
   /** @type {Partial<PlaySettings>} */
   const play = value.play ?? {};
-  value.play = { video: {}, sync: {}, mute: {}, volume: {}, layout: "grid", opacity: 1, zoom: 1, ...play };
-  if (!ZOOMS.includes(value.play.zoom)) value.play.zoom = 1;
+  value.play = { video: {}, sync: {}, mute: {}, layout: "grid", opacity: 1, zoom: 1, keySize: 1, ...play };
+  // A dragged size lands between the button steps, so any value in range is kept.
+  const zoom = value.play.zoom;
+  if (!(typeof zoom === "number" && zoom >= ZOOMS[0] && zoom <= ZOOMS[ZOOMS.length - 1])) value.play.zoom = 1;
+  if (!KEY_SIZES.includes(value.play.keySize)) value.play.keySize = 1;
   if (Object.keys(value.profiles).length === 0) value.profiles.Default = { controls: [] };
   return value;
 }
@@ -399,16 +420,6 @@ class PcmPlayer {
     this.pending = [];
     this.pendingBytes = 0;
     this.next = 0;
-    /** 0..1, on this computer only. */
-    this.volume = 1;
-    /** @type {GainNode | null} */
-    this.gain = null;
-  }
-
-  /** @param {number} volume */
-  setVolume(volume) {
-    this.volume = volume;
-    if (this.gain) this.gain.gain.value = volume;
   }
 
   /** @param {Uint8Array} bytes */
@@ -439,12 +450,7 @@ class PcmPlayer {
     if (this.next < now + 0.01 || this.next > now + PCM_MAX_LEAD_S) this.next = now + PCM_LEAD_S;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    if (!this.gain) {
-      this.gain = ctx.createGain();
-      this.gain.gain.value = this.volume;
-      this.gain.connect(ctx.destination);
-    }
-    source.connect(this.gain);
+    source.connect(ctx.destination);
     source.start(this.next);
     this.next += buffer.duration;
   }
@@ -462,12 +468,40 @@ class PcmPlayer {
  * in the first few percent of the slider.
  */
 const BRIGHTNESS_GAMMA = 2.2;
-/** How often a dragged brightness slider may reach the phone. */
-const BRIGHTNESS_EVERY_MS = 150;
+/** The lit part of a retro slider, which app.css reads as --fill. A set from
+ *  code fires no input event, so every place that moves one calls this.
+ *  @param {HTMLInputElement} input */
+const paintSlider = (input) => input.style.setProperty("--fill", `${input.value}%`);
+
+/** How often a dragged slider may reach the phone. */
+const PHONE_EVERY_MS = 150;
 
 /**
- * Volume (this computer) and brightness (the phone) for one phone, in a
- * popover under the button that opened it.
+ * Send a dragged slider to the phone at most every PHONE_EVERY_MS, and once
+ * more where it stops. Returns a cancel for the pending send.
+ * @param {HTMLInputElement} input @param {() => void} send
+ */
+function sendWhileDragged(input, send) {
+  let last = 0;
+  let trailing = 0;
+  const now = () => {
+    clearTimeout(trailing);
+    last = Date.now();
+    send();
+  };
+  input.addEventListener("input", () => {
+    clearTimeout(trailing);
+    const wait = PHONE_EVERY_MS - (Date.now() - last);
+    if (wait <= 0) now();
+    else trailing = window.setTimeout(now, wait);
+  });
+  input.addEventListener("change", now);
+  return () => clearTimeout(trailing);
+}
+
+/**
+ * The phone's volume and brightness, in a popover under the button that
+ * opened it. Both are read from the phone when it opens.
  * @param {Dev} dev @param {HTMLElement} anchor
  */
 function openControls(dev, anchor) {
@@ -487,23 +521,29 @@ function openControls(dev, anchor) {
     input.max = "100";
     input.value = String(Math.round(value));
     input.setAttribute("aria-label", label);
+    input.addEventListener("input", () => paintSlider(input));
+    paintSlider(input);
     return input;
   };
 
-  // Volume: this computer only, so it works on a muted phone as well.
-  const volume = slider("Volume on this computer", (doc.play.volume[dev.serial] ?? 1) * 100);
-  const volumeValue = el("span", "pop-value", `${volume.value}%`);
+  // Volume: the phone's media volume, which is also how loud it plays here.
+  const volume = slider("Phone volume", 0);
+  volume.disabled = true;
+  const volumeValue = el("span", "pop-value", "...");
   volume.addEventListener("input", () => {
-    const v = Number(volume.value) / 100;
     volumeValue.textContent = `${volume.value}%`;
-    doc.play.volume[dev.serial] = v;
-    dev.player.setVolume(v);
   });
-  volume.addEventListener("change", () => save());
+  const cancelVolume = sendWhileDragged(volume, () => dev.send({ t: "volume", level: Number(volume.value) / 100 }));
+  dev.onVolume = (level) => {
+    volume.disabled = level === null;
+    if (level !== null) volume.value = String(Math.round(level * 100));
+    paintSlider(volume);
+    volumeValue.textContent = level === null ? "-" : `${volume.value}%`;
+  };
+  dev.send({ t: "volume?" });
   const noSound = dev.audioState === "off" || dev.audioState === "error";
-  volume.disabled = noSound;
 
-  // Brightness: the phone's own screen. Read when the popover opens.
+  // Brightness: the phone's own screen.
   const bright = slider("Phone brightness", 0);
   bright.disabled = true;
   const brightValue = el("span", "pop-value", "...");
@@ -511,26 +551,15 @@ function openControls(dev, anchor) {
     dev.send({ t: "brightness", auto: true });
     autoBtn.classList.add("is-on");
   }, { cls: "pop-auto", tip: "Let the phone set its brightness from the light around it" });
-  let lastSent = 0;
-  let trailing = 0;
-  const sendBrightness = () => {
-    clearTimeout(trailing);
-    const level = (Number(bright.value) / 100) ** BRIGHTNESS_GAMMA;
-    dev.send({ t: "brightness", level });
-    lastSent = Date.now();
-  };
   bright.addEventListener("input", () => {
     brightValue.textContent = `${bright.value}%`;
     autoBtn.classList.remove("is-on"); // moving it takes the phone off Auto, as on the phone
-    clearTimeout(trailing);
-    const wait = BRIGHTNESS_EVERY_MS - (Date.now() - lastSent);
-    if (wait <= 0) sendBrightness();
-    else trailing = window.setTimeout(sendBrightness, wait);
   });
-  bright.addEventListener("change", sendBrightness);
+  const cancelBrightness = sendWhileDragged(bright, () => dev.send({ t: "brightness", level: (Number(bright.value) / 100) ** BRIGHTNESS_GAMMA }));
   dev.onBrightness = (level, auto) => {
     bright.disabled = level === null;
     if (level !== null) bright.value = String(Math.round(level ** (1 / BRIGHTNESS_GAMMA) * 100));
+    paintSlider(bright);
     brightValue.textContent = level === null ? "-" : `${bright.value}%`;
     autoBtn.classList.toggle("is-on", auto);
   };
@@ -547,7 +576,7 @@ function openControls(dev, anchor) {
   };
   pop.append(
     row("volume", "Volume", [volume, volumeValue, el("span")]),
-    el("div", "pop-note", noSound ? "No sound from this phone." : "On this computer. The phone stays silent while Play is open."),
+    el("div", "pop-note", noSound ? "The phone's media volume. No sound reaches this computer from it." : "The phone's media volume. It plays here, not on the phone, while Play is open."),
     row("sun", "Brightness", [bright, brightValue, autoBtn]),
     el("div", "pop-note", "The phone's own screen. Moving it turns Auto off."),
   );
@@ -557,8 +586,10 @@ function openControls(dev, anchor) {
   pop.style.top = `${Math.round(r.bottom + pop.offsetHeight + 4 > innerHeight ? Math.max(6, r.top - pop.offsetHeight - 4) : r.bottom + 4)}px`;
   anchor.setAttribute("aria-expanded", "true");
   closeOpenMenu = () => {
-    clearTimeout(trailing);
+    cancelVolume();
+    cancelBrightness();
     pop.remove();
+    dev.onVolume = null;
     dev.onBrightness = null;
     anchor.setAttribute("aria-expanded", "false");
     closeOpenMenu = null;
@@ -587,8 +618,9 @@ class Dev {
     /** @type {boolean | null} */
     this.sentAudio = null;
     this.player = new PcmPlayer();
-    this.player.setVolume(doc.play.volume[serial] ?? 1);
-    /** The open controls popover, waiting for the phone's brightness. @type {((level: number | null, auto: boolean) => void) | null} */
+    /** The open controls popover, waiting for the phone's volume and brightness. @type {((level: number | null) => void) | null} */
+    this.onVolume = null;
+    /** @type {((level: number | null, auto: boolean) => void) | null} */
     this.onBrightness = null;
     /** @type {VideoDecoder | null} */
     this.decoder = null;
@@ -600,7 +632,7 @@ class Dev {
 
     this.tile = el("div", "tile");
     const head = el("div", "tile-head");
-    this.nameEl = el("span", "name", this.name);
+    this.nameEl = el("span", "name", customNames[this.serial] || this.name);
     this.stateEl = el("span", "state", "Connecting...");
     this.videoBtn = btn("", () => this.setVideo(!this.videoOn()), { cls: "ghost", icon: "video" });
     this.syncBtn = btn("", () => {
@@ -617,7 +649,7 @@ class Dev {
     this.controlsBtn = btn("", () => openControls(this, this.controlsBtn), {
       cls: "ghost",
       icon: "sliders",
-      tip: "Volume here and the phone's brightness",
+      tip: "The phone's volume and brightness",
     });
     this.controlsBtn.setAttribute("aria-haspopup", "dialog");
     head.append(this.nameEl, this.stateEl, this.audioBtn, this.controlsBtn, this.videoBtn, this.syncBtn);
@@ -645,6 +677,16 @@ class Dev {
     this.stateOverlay = el("div", "solo-state", "Connecting...");
     this.stateOverlay.hidden = !SOLO;
     this.screen.append(this.canvas, this.off, this.overlay);
+    // Drag the corner to size the phones: the zoom the buttons and Ctrl+wheel
+    // set, but any value between their steps. Double-click fits them again. A
+    // detached window has none: its own window size is what sizes the phone.
+    if (!SOLO) {
+      const grip = el("div", "resize-grip");
+      grip.dataset.tip = "Drag to resize. Double-click to fit";
+      grip.addEventListener("pointerdown", (e) => this.startResize(e, grip));
+      grip.addEventListener("dblclick", () => stepZoom(0));
+      this.screen.append(grip);
+    }
     this.body.append(this.screen, this.stateOverlay);
     // A detached window has no header: mute and the controls show in a corner on hover.
     if (SOLO) {
@@ -789,12 +831,14 @@ class Dev {
           this.refreshHead();
         }
         this.name = msg.name || this.serial;
-        this.nameEl.textContent = this.name;
+        this.nameEl.textContent = customNames[this.serial] || this.name;
         this.retries = 0;
         this.setState(`${msg.width}x${msg.height}`, false, true);
         layoutGrid();
         // A detached phone's window turns with it (the phone rotated, or this is its first frame).
         if (EMBED && SOLO === this.serial) parent.postMessage({ type: "tam-size", width: msg.width, height: msg.height }, "*");
+      } else if (msg.type === "volume") {
+        this.onVolume?.(typeof msg.level === "number" ? msg.level : null);
       } else if (msg.type === "brightness") {
         this.onBrightness?.(typeof msg.level === "number" ? msg.level : null, msg.auto === true);
       } else if (msg.type === "keymaps") {
@@ -916,6 +960,43 @@ class Dev {
     this.screen.style.height = `${Math.max(0, Math.floor(h))}px`;
     this.body.style.height = `${Math.floor(height)}px`;
     this.renderControls();
+  }
+
+  /**
+   * Resize from the screen's corner. The grid centres the phones, so the size
+   * follows the pointer's distance from the screen's centre, and whichever axis
+   * the pointer is further out on wins, the way a locked-ratio corner drag does.
+   * @param {PointerEvent} e @param {HTMLElement} grip
+   */
+  startResize(e, grip) {
+    e.preventDefault();
+    e.stopPropagation(); // the screen under it would take the press as a touch
+    const r = this.screen.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const dx0 = Math.max(1, e.clientX - cx);
+    const dy0 = Math.max(1, e.clientY - cy);
+    const zoom0 = doc.play.zoom;
+    const [min, max] = [ZOOMS[0], ZOOMS[ZOOMS.length - 1]];
+    grip.setPointerCapture(e.pointerId);
+    const move = (/** @type {PointerEvent} */ m) => {
+      const ratio = Math.max((m.clientX - cx) / dx0, (m.clientY - cy) / dy0);
+      const next = Math.round(Math.min(max, Math.max(min, zoom0 * ratio)) * 100) / 100;
+      if (next === doc.play.zoom) return;
+      doc.play.zoom = next;
+      layoutGrid();
+      zoomLabel.textContent = next === 1 ? "Fit" : `${Math.round(next * 100)}%`;
+    };
+    const end = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", end);
+      grip.removeEventListener("pointercancel", end);
+      save();
+      refreshChrome();
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
   }
 
   /** @param {PointerEvent} e */
@@ -1133,10 +1214,9 @@ const deleteBtn = btn("", () => {
   save();
   refreshChrome();
 }, { icon: "trash", tip: "Delete this profile", cls: "is-danger" });
-const playBtn = btn("Play", () => setMode("play"), { tip: "Keys and mouse drive the active phone" });
-const editBtn = btn("Edit", () => setMode("edit"), { tip: "Place and bind controls on the active phone" });
-const modeSeg = el("div", "seg");
-modeSeg.append(playBtn, editBtn);
+// One toggle: Edit to place the keys, Done to play with them. Playing is the
+// resting state, so the bar only grows while editing.
+const editBtn = btn("Edit", () => setMode(mode === "edit" ? "play" : "edit"), { icon: "pencil", tip: "Place and bind controls on the active phone" });
 const inputBtn = btn("Shortcut Mode", () => setInputMode(inputMode === "type" ? "shortcut" : "type"), {
   tip: "Shortcut Mode fires the keymap; Typing Mode types into the phone. Press ~ to switch",
 });
@@ -1151,6 +1231,14 @@ const opacitySelect = makeSelect("How visible the controls are while playing", (
   save();
   refreshChrome();
 });
+const sizeSelect = makeSelect("How big the buttons are on every phone", (value) => {
+  doc.play.keySize = Number(value);
+  save();
+  refreshChrome();
+});
+/** How the keys look: only while editing, where they are placed, not while playing with them. */
+const keysGroup = el("span", "bar-group");
+keysGroup.append(el("span", "label", "Keys"), opacitySelect.node, el("span", "label", "Size"), sizeSelect.node, el("span", "sep"));
 const gridBtn = btn("", () => setLayout("grid"), { icon: "grid", tip: "Show every phone", cls: "ghost" });
 const focusBtn = btn("", () => setLayout("focus"), { icon: "focus", tip: "Show only the active phone (the rest stay controlled)", cls: "ghost" });
 const layoutSeg = el("div", "seg");
@@ -1169,18 +1257,12 @@ const detachAllBtn = btn("Detach All", () => {
 }, { icon: "detach", tip: "Open every phone in its own window, side by side, screen only. Close a window to bring its phone back here" });
 bar.append(
   el("span", "label", "Profile"), profileSelect.node, renameInput, newBtn, renameBtn, deleteBtn, el("span", "sep"),
-  modeSeg, inputBtn, addTap, addJoy, addSwipe, el("span", "spacer"), statusEl,
-  el("span", "label", "Keys"), opacitySelect.node, el("span", "sep"), layoutSeg, zoomSeg, detachAllBtn, el("span", "sep"),
+  editBtn, inputBtn, addTap, addJoy, addSwipe, el("span", "spacer"), statusEl,
+  keysGroup, layoutSeg, zoomSeg, detachAllBtn, el("span", "sep"),
   btn("", () => pressNav("back"), { icon: "back", tip: "Back", cls: "ghost" }),
   btn("", () => pressNav("home"), { icon: "home", tip: "Home", cls: "ghost" }),
   btn("", () => pressNav("recent"), { icon: "recent", tip: "Recent apps", cls: "ghost" }),
 );
-if (EMBED) {
-  bar.append(el("span", "sep"), btn("", () => {
-    const url = `${location.origin}/?t=${encodeURIComponent(TOKEN)}&${SOLO ? "solo" : "focus"}=${encodeURIComponent(active)}`;
-    parent.postMessage({ type: "tam-open-browser", url }, "*");
-  }, { icon: "external", tip: "Open in a browser window", cls: "ghost" }));
-}
 // The grid scrolls when zoomed in; the stage around it holds what floats over
 // the phones and must not scroll away with them.
 const stage = el("div", "stage");
@@ -1219,19 +1301,26 @@ function refreshChrome() {
     [{ value: "1", label: "100%" }, { value: "0.75", label: "75%" }, { value: "0.5", label: "50%" }, { value: "0.25", label: "25%" }, { value: "0", label: "Hidden" }],
     String(doc.play.opacity),
   );
+  sizeSelect.set(KEY_SIZES.map((v) => ({ value: String(v), label: `${v * 100}%` })), String(doc.play.keySize));
+  root.style.setProperty("--ctl-size", `${Math.round(54 * doc.play.keySize)}px`);
   root.style.setProperty("--keys-opacity", String(doc.play.opacity));
   root.classList.toggle("keys-hidden", doc.play.opacity === 0);
   deleteBtn.disabled = Object.keys(doc.profiles).length < 2;
   for (const node of [profileSelect.node, newBtn, renameBtn]) node.toggleAttribute("disabled", !dev);
-  playBtn.classList.toggle("is-on", mode === "play");
-  editBtn.classList.toggle("is-on", mode === "edit");
-  for (const node of [addTap, addJoy, addSwipe]) node.hidden = mode !== "edit";
+  const editing = mode === "edit";
+  editBtn.classList.toggle("is-on", editing);
+  const editLabel = [...editBtn.childNodes].find((n) => n.nodeType === Node.TEXT_NODE);
+  if (editLabel) editLabel.textContent = editing ? "Done" : "Edit";
+  setIcon(editBtn, editing ? "check" : "pencil");
+  editBtn.dataset.tip = editing ? "Done: back to playing with the keys" : "Place and bind controls on the active phone";
+  editBtn.setAttribute("aria-label", editBtn.dataset.tip);
+  for (const node of [addTap, addJoy, addSwipe, newBtn, renameBtn, deleteBtn, keysGroup]) node.hidden = !editing;
   inputBtn.hidden = mode !== "play";
   inputBtn.textContent = inputMode === "type" ? "Typing Mode" : "Shortcut Mode";
   inputBtn.classList.toggle("is-on", inputMode === "type");
   // A detached phone's window has nothing to lay out: it is sized to the phone.
-  layoutSeg.hidden = Boolean(SOLO);
-  zoomSeg.hidden = Boolean(SOLO);
+  zoomSeg.hidden = LONE;
+  layoutSeg.hidden = LONE;
   const zoom = doc.play.zoom;
   zoomLabel.textContent = zoom === 1 ? "Fit" : `${Math.round(zoom * 100)}%`;
   zoomOutBtn.disabled = zoom <= ZOOMS[0];
@@ -1323,8 +1412,12 @@ function layoutGrid() {
   const gap = SOLO ? 0 : 6;
   const head = SOLO ? 0 : 29;
   const border = SOLO ? 0 : 2;
-  const W = grid.clientWidth;
-  const H = grid.clientHeight;
+  // clientWidth/Height round a fractional box UP, so a layout fitted to them
+  // overflows by a fraction of a pixel. That overflow brought scrollbars, the
+  // scrollbars shrank the box, the smaller fit lost them again, and a detached
+  // window flickered between two sizes every frame. One pixel of slack ends it.
+  const W = grid.clientWidth - 1;
+  const H = grid.clientHeight - 1;
   let best = { cw: 0, ch: 0, score: -1 };
   for (let cols = 1; cols <= shown.length; cols++) {
     const rows = Math.ceil(shown.length / cols);
@@ -1702,6 +1795,9 @@ window.addEventListener("message", (e) => {
   if (e.data.type === "tam-focus" && typeof e.data.serial === "string") {
     pendingFocus = e.data.serial;
     activate(e.data.serial);
+  } else if (e.data.type === "tam-names" && e.data.names && typeof e.data.names === "object") {
+    customNames = e.data.names;
+    for (const d of devs.values()) d.nameEl.textContent = customNames[d.serial] || d.name;
   } else if (e.data.type === "tam-font" && e.data.data instanceof ArrayBuffer && typeof e.data.family === "string") {
     const face = new FontFace(e.data.family, e.data.data, { weight: "100 900" });
     face.load().then((loaded) => document.fonts.add(loaded)).catch(() => {});
@@ -1722,6 +1818,7 @@ async function refreshDevices() {
     for (const info of ready) {
       // A detached phone's window still connects the phones synced to it, hidden,
       // so they keep following its input.
+      if (ONLY.size > 0 && !ONLY.has(info.serial)) continue;
       if (SOLO && info.serial !== SOLO && !doc.play.sync[info.serial]) continue;
       seen.add(info.serial);
       if (!devs.has(info.serial)) {

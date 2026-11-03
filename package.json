@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "check": "node --check extension.js",
-    "test": "node --test src/adb.test.mjs src/play.test.mjs play/protocol.test.mjs",
+    "test": "node --test src/adb.test.mjs src/ai.test.mjs src/play.test.mjs play/protocol.test.mjs",
     "typecheck": "tsc -p jsconfig.json"
   },
   "devDependencies": {

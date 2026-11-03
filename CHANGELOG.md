@@ -4,6 +4,39 @@ All notable changes to **TEDI Android Mirror**. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
+## [0.2.0] - 03-11-2026
+
+### Added
+
+- **AI tool `android_mirror`.** `status` lists devices and whether each is
+  mirroring, `open` shows the panel, `start` and `stop` run scrcpy for a serial.
+  No shell, input, install or file access.
+- **Wi-Fi button on a USB phone's row.** It runs `adb tcpip 5555`, reads the
+  phone's Wi-Fi address and connects to it, so the cable can come off. Works on
+  any Android version with no pairing code, and without mDNS, which many
+  networks block (then Wireless debugging's Connect never appears). Lasts until
+  the phone restarts.
+- **Wi-Fi Debugging strip: Pair with a code, Connect by address.** For
+  networks where the phone never shows up by itself (mDNS blocked), type the
+  phone's pairing window IP:Port and 6-digit code, then the Wireless debugging
+  IP address & Port. adb's own `protocol fault (couldn't read status message)`
+  is replaced by what actually went wrong: a closed pairing window, a wrong
+  code, or a phone this PC cannot reach. Connect refuses the pairing window's
+  own address (that port closes once paired) and says which port to use.
+
+### Removed
+
+- The Play pane's "Open in a browser window" button, and with it the
+  `plugin:opener|open_url` permission. `node play/relay.mjs --open` still
+  serves the page to a browser without TEDI.
+
+### Changed
+
+- **Play's Volume slider sets the phone's own media volume** (the one its
+  volume keys change) instead of a gain on this computer. Captured sound comes
+  after that volume, so it is also how loud the phone plays here. The step range
+  is read from the phone: 0..15 on AOSP, 0..150 on MIUI.
+
 ## [0.1.0] - 19-09-2026
 
 First release.

@@ -63,10 +63,18 @@ export function setCtx(value) {
  * @property {Set<string>} stopping
  * @property {(() => void) | null} onOpen
  * @property {(() => void) | null} onRefresh
- * @property {((endpoint: string) => void) | null} onConnect
+ * @property {((endpoint: string) => Promise<boolean>) | null} onConnect
+ * @property {((endpoint: string, code: string) => Promise<boolean>) | null} onPair Wireless debugging, pairing code
+ * @property {((serial: string) => void) | null} onWifi USB phone to Wi-Fi (`adb tcpip`)
  * @property {((serial: string) => void) | null} onStart
  * @property {((serial: string) => void) | null} onStop
  * @property {((serial: string) => void) | null} onPlay
+ * @property {Record<string, string>} names what the user called a phone, by serial
+ * @property {Set<string>} selected the phones ticked to play together
+ * @property {((serial: string, on: boolean) => void) | null} onSelect
+ * @property {(() => void) | null} onPlaySelected
+ * @property {((serial: string) => void) | null} onForget drop a Wi-Fi phone, for good
+ * @property {((serial: string, name: string) => void) | null} onRename
  */
 
 /** @type {RuntimeState} */
@@ -97,9 +105,17 @@ export const state = {
   onOpen: null,
   onRefresh: null,
   onConnect: null,
+  onWifi: null,
+  onPair: null,
   onStart: null,
   onStop: null,
   onPlay: null,
+  names: {},
+  selected: new Set(),
+  onSelect: null,
+  onPlaySelected: null,
+  onForget: null,
+  onRename: null,
 };
 
 export function clearTimer() {

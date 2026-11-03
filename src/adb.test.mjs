@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isSafeEndpoint, isSafeSerial, parseDevices, parseMdns, parseProbeOutput, probeCommand, takeFrames, unconnected } from "./adb.js";
+import { isSafeEndpoint, isSafeSerial, parseDevices, parseMdns, parseProbeOutput, probeCommand, takeFrames, unconnected, wifiAddress } from "./adb.js";
 
 test("parses Linux/macOS USB device details", () => {
   const [device] = parseDevices("R58M123456A device usb:1-2 product:panther model:Pixel_7 device:panther");
@@ -103,4 +103,14 @@ test("probe per OS: PowerShell on Windows, sh -c elsewhere", () => {
   assert.match(probeCommand("windows"), /Get-Command adb/);
   for (const os of ["macos", "linux"]) assert.match(probeCommand(os), /^sh -c '/);
   assert.throws(() => probeCommand("android"), /Windows, macOS, and Linux/);
+});
+
+test("the Wi-Fi address is wlan's, not mobile data's or loopback's", () => {
+  const out = [
+    "1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever",
+    "12: rmnet_data0    inet 10.64.12.9/30 scope global rmnet_data0\       valid_lft forever preferred_lft forever",
+    "30: wlan0    inet 192.168.1.23/24 brd 192.168.1.255 scope global wlan0\       valid_lft forever preferred_lft forever",
+  ].join("\r\n");
+  assert.equal(wifiAddress(out), "192.168.1.23");
+  assert.equal(wifiAddress(out.split("\r\n").slice(0, 2).join("\n")), "");
 });

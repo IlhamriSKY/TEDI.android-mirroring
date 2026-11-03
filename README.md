@@ -1,80 +1,83 @@
 # TEDI Android Mirror
 
-TEDI extension untuk mendeteksi satu atau banyak perangkat Android melalui USB atau Wi-Fi debugging, lalu menjalankan beberapa instance `scrcpy` dari panel TEDI.
+A TEDI extension that detects one or many Android devices over USB or Wi-Fi debugging, then runs multiple `scrcpy` instances from a TEDI panel.
 
 ## Install
 
-1. Buka **Settings -> Extensions** di TEDI.
-2. Pindah ke tab **From GitHub**.
-3. Tempel `IlhamriSKY/TEDI.android-mirroring` lalu klik **Review -> Install**.
+1. Open **Settings -> Extensions** in TEDI.
+2. Switch to the **From GitHub** tab.
+3. Paste `IlhamriSKY/TEDI.android-mirroring` then click **Review -> Install**.
 
-Butuh TEDI `>=0.4.7`. Panel **Android Mirror** dan **Android Play** muncul
-sebagai tab setelah dipasang.
+Requires TEDI `>=0.4.7`. The **Android Mirror** and **Android Play** panels
+appear as tabs once installed.
 
-Untuk memasang hasil build lokal: `npm install && npm run build`, lalu zip
-`manifest.json`, `extension.js` dan folder `play/` di akar arsip, dan pilih dari
-tab **From .zip**. `play/` wajib ikut, karena panel Play menjalankan
-`play/relay.mjs` dan mengirim `play/scrcpy-server` ke perangkat.
+To install a local build: `npm install && npm run build`, then zip
+`manifest.json`, `extension.js` and the `play/` folder at the root of the
+archive, and pick it from the **From .zip** tab. `play/` must be included,
+because the Play panel runs `play/relay.mjs` and sends `play/scrcpy-server`
+to the device.
 
-## Sistem operasi yang didukung
+## Supported platforms
 
 - Windows
 - macOS
 - Linux
 
-Extension memilih cara menjalankan probe sesuai sistem operasi: PowerShell di Windows dan shell POSIX di macOS/Linux. Setiap perangkat memiliki tombol mirror sendiri sehingga beberapa Android dapat dicerminkan bersamaan.
+The extension picks how it runs the probe based on the operating system: PowerShell on Windows and a POSIX shell on macOS/Linux. Each device has its own mirror button, so multiple Android devices can be mirrored at the same time.
 
-## Prasyarat
+## Requirements
 
-- **USB debugging** aktif di Android jika memakai USB. Di Linux, user harus punya izin USB (aturan udev), kalau tidak statusnya `No USB permission`.
-- `scrcpy` dan `adb`. Rilis resmi scrcpy sudah membawa `adb` sendiri, dan `adb` di sebelah `scrcpy` selalu dipilih lebih dulu supaya versinya sama (dua versi adb saling me-restart server dan memutus mirror yang sedang jalan). Kalau tidak ada, dicari di PATH, `ANDROID_HOME` / `ANDROID_SDK_ROOT`, dan lokasi SDK default.
-- Lokasi scrcpy yang dikenali selain PATH:
-  - Windows: `%LOCALAPPDATA%\Programs\scrcpy`, scoop, chocolatey, winget (symlink diikuti)
+- **USB debugging** enabled on the Android device if using USB. On Linux, the user needs USB permission (a udev rule), otherwise the status is `No USB permission`.
+- `scrcpy` and `adb`. Official scrcpy releases already bundle their own `adb`, and the `adb` next to `scrcpy` is always picked first so the versions match (two different adb versions restart each other's server and drop the mirror session that is running). If not found there, it is searched for in PATH, `ANDROID_HOME` / `ANDROID_SDK_ROOT`, and the default SDK locations.
+- scrcpy locations recognized besides PATH:
+  - Windows: `%LOCALAPPDATA%\Programs\scrcpy`, scoop, chocolatey, winget (symlinks are followed)
   - macOS: Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`)
   - Linux: `/usr/bin`, `~/.local/bin`, snap
-- Untuk Wi-Fi, aktifkan **Wireless debugging** dan pastikan PC di jaringan yang sama. Perangkat yang belum pernah di-pair harus di-pair sekali dulu (`adb pair`).
+- For Wi-Fi, the phone and the PC must be on the same network, and the network must let devices reach each other (guest and school networks often do not). Two ways in:
+  - **From USB (any Android version):** plug the phone in once and press **Wi-Fi** on its row. No pairing code and no network discovery needed, and the cable can come off afterwards. It lasts until the phone restarts.
+  - **Wireless debugging (Android 11+, no cable):** turn it on under Developer options. Pair once: on the phone tap **Pair device with pairing code** (not QR) and keep that window open, then type its IP:Port and 6-digit code in the panel's **Wi-Fi Debugging** strip and press **Pair**. Then type the **IP address & Port** from the main Wireless debugging screen (a different port, it changes each time Wireless debugging is turned on) and press **Connect**. Where the network allows mDNS the phone also shows up by itself with its own **Connect** button.
 
-Pada koneksi USB, Android akan menampilkan dialog RSA. Pilih **Allow**. Jika statusnya `unauthorized`, buka kunci HP lalu izinkan komputer ini.
+On a USB connection, Android shows an RSA dialog. Choose **Allow**. If the status is `unauthorized`, unlock the phone and allow this computer.
 
-## Cara memakai
+## Usage
 
-1. Buka command palette TEDI lalu pilih **Open Android Mirror**, atau tekan `Ctrl+Alt+R` (`Cmd+Option+R` di macOS), atau klik ikon HP di status bar.
-2. Daftar perangkat diperbarui otomatis. **Refresh** mencari ulang `adb`/`scrcpy` (misalnya setelah baru diinstal) dan layanan Wi-Fi.
-3. Tekan **Connect** pada layanan Wi-Fi yang ditemukan, jika belum terhubung.
-4. Tekan **Mirror** di baris perangkat. Beberapa perangkat bisa di-mirror bersamaan, masing-masing di jendela scrcpy sendiri.
-5. Tekan **Stop** untuk menghentikan mirror yang dimulai dari panel ini.
+1. Open TEDI's command palette and choose **Open Android Mirror**, or press `Ctrl+Alt+R` (`Cmd+Option+R` on macOS), or click the phone icon in the status bar.
+2. The device list updates automatically. **Refresh** re-searches for `adb`/`scrcpy` (for example, after they were just installed) and for Wi-Fi services.
+3. For Wi-Fi, press **Wi-Fi** on a USB phone's row, use **Pair** and **Connect** in the **Wi-Fi Debugging** strip at the bottom, or **Connect** on a phone that showed up by itself.
+4. Press **Mirror** on the device's row. Multiple devices can be mirrored at the same time, each in its own scrcpy window.
+5. Press **Stop** to stop a mirror session that was started from this panel.
 
-### Play: layar HP + keymap drag and drop (seperti emulator)
+### Play: phone screen + drag-and-drop keymap (like an emulator)
 
-Tombol **Play** di baris HP membuka pane **Android Play** (satu pane untuk semua HP) dan menjadikan HP itu yang aktif: layar HP langsung di TEDI, dengan editor tombol di atasnya.
+The **Play** button on a phone's row opens the **Android Play** pane (one pane for all phones) and makes that phone the active one: the phone's screen appears directly in TEDI, with a button editor over it.
 
-- **Mode Play:** mouse menjadi jari (klik kanan = Back, klik tengah = Home); tombol keyboard yang dipetakan menjadi sentuhan. Beberapa tombol bisa ditahan bersamaan (multi-touch). Setiap tombol yang ditekan terlihat: lingkarannya mengecil selama ditahan dan cincin putih memancar keluar, tampil penuh sesaat walaupun **Keys** diset tipis (kecuali Hidden).
-- **Shortcut Mode / Typing Mode:** klik layar HP dulu supaya keyboard masuk ke HP (bukan ke TEDI), lalu tekan **~** untuk berpindah. Shortcut Mode menjalankan keymap; Typing Mode mengetik ke HP (chat, kolom pencarian): huruf dikirim sebagai teks, Enter/Backspace/panah/Tab/Esc sebagai tombol, dan Ctrl+A/C/V/X/Z/Y ikut. Selama Typing Mode ada tanda di atas layar.
-- **Mode Edit:** **+ Tap** (satu titik, bisa ditahan), **+ Joystick** (WASD, cincin bisa digeser dan diubah ukurannya), **+ Swipe** (geser dari titik awal ke titik akhir, durasi bisa diatur). Kontrol yang baru ditambahkan berdenyut (cincin putih memancar) sampai pertama kali ditarik, jadi langsung kelihatan mana yang harus dipindah. Tarik kontrol ke posisinya, klik kontrol lalu klik tombol key di panel kanan dan tekan huruf untuk memasangkan. Delete menghapus kontrol terpilih.
-- **Profil:** satu set tombol per game (New, Rename, Delete). Tersimpan di `~/.tedi/android-keymaps.json`, dipakai lagi untuk HP yang sama. Kalau file itu rusak (misalnya salah edit tangan), salinannya disimpan dulu sebagai `android-keymaps.json.unreadable-<waktu>.json` sebelum ditimpa.
-- **Di mana saja:** **Open in browser** membuka halaman yang sama di browser. Tanpa TEDI: `node play/relay.mjs --open`.
-- **Banyak HP:** pane **Android Play** menampilkan semua HP dalam grid. Klik HP untuk menjadikannya aktif; **Sync** (ikon rantai) membuat HP itu mengikuti input HP aktif; ikon kamera mematikan layarnya (tetap bisa dikontrol); Grid/Focus mengatur tampilan.
-- **Suara:** suara HP keluar di laptop, bukan di HP (Android 11 ke atas), selama Play terbuka. Ikon speaker di kepala tiap HP membisukannya **di laptop saja**; di jendela detach tombolnya muncul di pojok kanan atas saat mouse di atas layar (dan tetap terlihat selama dibisukan). HP yang dibisukan atau tidak tampil tidak dikirimi suara sama sekali. Di bawah Android 11 ikonnya mati dan suara tetap di HP. Suara dikirim mentah (48 kHz stereo, sekitar 190 KB/s per HP) supaya tanpa jeda encode.
-- **Volume dan kecerahan:** ikon slider di kepala tiap HP (di jendela detach: pojok kanan atas) membuka panel kecil. **Volume** mengatur keras suara HP itu di laptop saja (0 sampai 100%, diingat). **Brightness** mengatur kecerahan layar HP sendiri, dibaca dari HP saat panel dibuka; menggesernya mematikan kecerahan otomatis seperti di HP, dan **Auto** menyalakannya lagi. Kecerahan diatur lewat layanan display Android (skala yang sama di semua HP, termasuk MIUI yang menyimpan angka versinya sendiri), dengan cadangan pengaturan 0 sampai 255 di Android lama.
-- **Zoom:** tombol kaca pembesar di bar, `Ctrl` + scroll, atau `Ctrl+=` / `Ctrl+-` membesarkan dan mengecilkan layar HP di pane (50% sampai 300% dari ukuran pas). Kalau lebih besar dari pane, scroll untuk bergeser. Label di tengah (atau `Ctrl+0`) kembali ke **Fit**. Zoom diingat.
-- **Detach:** ikon panel di kepala tiap HP langsung membuka HP itu di **jendela float TEDI** (selalu di atas, bisa dipindah ke mana saja), hanya layar tanpa bar dan tombol; keymap, mouse dan ~ tetap jalan. Jendelanya **ikut rotasi HP**: saat HP diputar ke landscape atau portrait, jendela berputar di tempat (tengahnya tetap, sisi panjangnya sama) dan tetap di dalam monitor. Detach HP yang sama lagi memunculkan jendelanya. Di grid HP itu disembunyikan selama jendelanya terbuka; tutup jendelanya untuk mengembalikannya. Keymap diatur dari grid dan langsung berlaku. Jendela float memakai relay jendela utama (tidak membuat sesi kedua) dan tidak menjalankan proses apa pun sendiri.
-- **Detach All** (di TEDI): tombol di bar membuka setiap HP di jendelanya sendiri dan menyusunnya **berdampingan** di monitor TEDI, dalam satu baris atau lebih (dipilih yang membuat layar paling besar), semuanya diperkecil sama rata kalau tidak muat. HP yang sudah di-detach ikut disusun ulang. Setiap jendela lalu mengikuti rotasi HP-nya sendiri.
-- **TEDI lama:** ikut rotasi dan penyusunan berdampingan butuh perintah `set_float_window_bounds` dari TEDI versi berikutnya. Di TEDI yang belum punya, jendela float tetap terbuka (di tengah jendela TEDI, tidak ikut berputar). Kalau jendela float sama sekali tidak bisa dibuka, HP itu dibuka di pane biasa.
-- **Syarat:** Node.js (untuk relay) dan adb. Layar dikirim oleh `play/scrcpy-server` (scrcpy 4.1, Apache-2.0, lihat `play/NOTICE`), jadi scrcpy tidak wajib terpasang.
+- **Play mode:** the mouse becomes a finger (right-click = Back, middle-click = Home); mapped keyboard keys become touches. Multiple keys can be held at once (multi-touch). Every pressed key is visible: its circle shrinks while held and a white ring pulses outward, showing at full opacity briefly even if **Keys** is set to thin (except Hidden).
+- **Shortcut Mode / Typing Mode:** click the phone screen first so the keyboard goes to the phone (not to TEDI), then press **~** to switch. Shortcut Mode runs the keymap; Typing Mode types into the phone (chat, search fields): letters are sent as text, Enter/Backspace/arrows/Tab/Esc as keys, and Ctrl+A/C/V/X/Z/Y are also forwarded. A marker shows above the screen while in Typing Mode.
+- **Edit mode:** **+ Tap** (a single point, can be held), **+ Joystick** (WASD, the ring can be dragged and resized), **+ Swipe** (drag from a start point to an end point, duration is adjustable). A newly added control pulses (a white ring radiates outward) until it is dragged for the first time, so it is immediately obvious which one needs to be moved. Drag a control into place, click the control then click the key button in the right panel and press a letter to bind it. Delete removes the selected control.
+- **Profiles:** one button set per game (New, Rename, Delete). Stored in `~/.tedi/android-keymaps.json`, reused for the same phone. If that file is corrupted (for example, from a bad manual edit), a copy is saved as `android-keymaps.json.unreadable-<time>.json` before it is overwritten.
+- **Without TEDI:** `node play/relay.mjs --open` opens the same page in a browser.
+- **Multiple phones:** the **Android Play** pane shows all phones in a grid. Click a phone to make it active; **Sync** (the chain icon) makes that phone follow the active phone's input; the camera icon turns off its screen (it can still be controlled); Grid/Focus controls the layout.
+- **Sound:** the phone's audio plays on the PC, not on the phone (Android 11 and up), while Play is open. The speaker icon on each phone's header mutes it **on the PC only**; in the detach window the button appears in the top-right corner when the mouse is over the screen (and stays visible while muted). A muted or not-visible phone is sent no audio at all. Below Android 11 the icon is disabled and audio stays on the phone. Audio is sent raw (48 kHz stereo, about 190 KB/s per phone) so there is no encode delay.
+- **Volume and brightness:** the slider icon on each phone's header (in the detach window: top-right corner) opens a small popover. The **Volume** slider sets the phone's own media volume (the one its volume keys change), read from the phone when the popover opens; captured sound comes after that volume, so it is also how loud the phone plays on the PC. The step range is read from the phone (0 to 15 on stock Android, 0 to 150 on MIUI). **Brightness** sets the phone's own screen brightness, read from the phone when the panel opens; dragging it turns off auto-brightness just like on the phone, and **Auto** turns it back on. Brightness is set through the Android display service (the same scale on every phone, including MIUI, which keeps its own version number), with a fallback of the 0 to 255 setting on older Android.
+- **Zoom:** the magnifying-glass button in the bar, `Ctrl` + scroll, or `Ctrl+=` / `Ctrl+-` zoom the phone's screen in and out within the pane (50% to 300% of the fit size). When larger than the pane, scroll to pan. The label in the middle (or `Ctrl+0`) returns to **Fit**. Zoom is remembered.
+- **Detach:** the panel icon on each phone's header opens that phone directly in a **TEDI float window** (always on top, can be moved anywhere), just the screen with no bar and no buttons; the keymap, mouse and ~ still work. The window **follows the phone's rotation**: when the phone is rotated to landscape or portrait, the window rotates in place (its center stays put, its long side stays the same) and stays within the monitor. Detaching the same phone again brings its window back up. In the grid, that phone is hidden while its window is open; close the window to bring it back. The keymap is set from the grid and applies immediately. The float window uses the main window's relay (it does not create a second session) and does not run any process of its own.
+- **Detach All** (in TEDI): the button in the bar opens every phone in its own window and arranges them **side by side** on TEDI's monitor, in one row or more (whichever makes the screens largest), all scaled down evenly if they do not fit. Phones that are already detached are rearranged too. Each window then follows its own phone's rotation.
+- **Older TEDI:** following rotation and side-by-side arrangement needs the `set_float_window_bounds` command from a later TEDI version. On a TEDI without it, the float window still opens (centered on the TEDI window, without following rotation). If the float window cannot be opened at all, that phone opens in a regular pane instead.
+- **Requirements:** Node.js (for the relay) and adb. The screen is streamed by `play/scrcpy-server` (scrcpy 4.1, Apache-2.0, see `play/NOTICE`), so scrcpy does not need to be installed.
 
-Cara kerja: `play/relay.mjs` (tanpa dependency) menjalankan scrcpy-server di HP lewat `adb forward`, meneruskan video H.264 ke halaman lewat WebSocket, dan mengubah sentuhan halaman menjadi pesan kontrol scrcpy. Halaman men-decode video dengan WebCodecs. Relay hanya mendengarkan `127.0.0.1` dan setiap permintaan harus membawa token acak per sesi, Host dan Origin miliknya sendiri, jadi situs web lain tidak bisa mengendalikan HP. Satu sesi scrcpy per HP dibagi ke semua halaman yang menampilkannya, dan berhenti beberapa detik setelah halaman terakhir ditutup.
+How it works: `play/relay.mjs` (no dependencies) runs scrcpy-server on the phone via `adb forward`, forwards H.264 video to the page over WebSocket, and turns touches on the page into scrcpy control messages. The page decodes video with WebCodecs. The relay only listens on `127.0.0.1` and every request must carry a per-session random token, its own Host and Origin, so no other website can control the phone. One scrcpy session per phone is shared across every page displaying it, and stops a few seconds after the last page closes it.
 
-Ikon di status bar hanya ikon. Jumlah perangkat ada di hover ikon dan di panel.
+The status bar icon is icon-only. The device count is on the icon's hover and in the panel.
 
-Cara kerja: satu proses `adb track-devices` berjalan selama extension aktif dan mengirim perubahan daftar perangkat, jadi tidak ada shell yang dijalankan tiap beberapa detik. Proses itu juga yang menjaga adb server tetap hidup; di Windows TEDI memasukkan setiap proses anak ke Job Object, dan server yang dinyalakan oleh adb berumur pendek ikut mati bersamanya. Layanan Wi-Fi (`adb mdns services`) hanya dipindai saat panel terbuka.
+How it works: one `adb track-devices` process runs for as long as the extension is active and reports device-list changes, so no shell is run every few seconds. That process is also what keeps the adb server alive; on Windows, TEDI puts every child process into a Job Object, and a server started by a short-lived adb dies together with it. Wi-Fi services (`adb mdns services`) are only scanned while the panel is open.
 
-## Batasan penting
+## Limitations
 
-Tombol **Mirror** membuka scrcpy sebagai **jendela native terpisah** (suaranya juga keluar di laptop, bawaan scrcpy, tanpa tombol mute; bisukan lewat Volume Mixer Windows); untuk layar di dalam tab TEDI pakai **Play**. Extension ini mengelola proses scrcpy dari TEDI, tetapi tidak mencoba mengambil alih atau membunuh proses scrcpy yang tidak dibuat oleh extension ini.
+The **Mirror** button opens scrcpy as a **separate native window** (its audio also plays on the PC, a built-in scrcpy behavior, with no mute button; mute it through the Windows Volume Mixer); for the screen inside a TEDI tab, use **Play**. This extension manages scrcpy processes from TEDI, but does not try to take over or kill a scrcpy process that this extension did not create.
 
-Extension hanya memakai perintah tetap untuk mencari `adb`/`scrcpy`, lalu menjalankan `adb` langsung tanpa shell untuk membaca daftar perangkat, membaca mDNS ADB, dan `adb connect` ke endpoint mDNS yang tervalidasi. Extension tidak melakukan pemindaian IP arbitrer.
+The extension only uses fixed commands to look for `adb`/`scrcpy`, then runs `adb` directly without a shell to read the device list, read ADB mDNS, and `adb connect` to a validated mDNS endpoint. The extension does not perform arbitrary IP scanning.
 
-## Build dan validasi
+## Build and validate
 
 ```powershell
 npm install
@@ -84,4 +87,4 @@ npm run check
 npm run typecheck
 ```
 
-Validasi paket dari root TEDI dapat dilakukan dengan `tedi ext validate` jika subcommand tersebut tersedia pada build CLI yang dipakai.
+Package validation from the TEDI root can be done with `tedi ext validate` if that subcommand is available in the CLI build you are using.

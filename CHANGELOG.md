@@ -4,6 +4,12 @@ All notable changes to **TEDI Android Mirror**. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/).
 
+## [0.2.1] - 2026-11-04
+
+### Changed
+
+- **Loading indicators are one ring**, the same one the app draws.
+
 ## [0.2.0] - 03-11-2026
 
 ### Added
